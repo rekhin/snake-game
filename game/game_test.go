@@ -1,8 +1,10 @@
 package game
 
 import (
-	"math"
 	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,47 +141,80 @@ func TestInputQueue_ApplyDirection(t *testing.T) {
 // TestUpdateEffects_Shake проверяет эффект тряски экрана
 func TestUpdateEffects_Shake(t *testing.T) {
 	g := &Game{
-		moveTimer:  time.Now().Add(-100 * time.Millisecond),
-		randSource: rand.New(rand.NewSource(42)),
+		moveTimer:    time.Now().Add(-100 * time.Millisecond),
+		shakeEndTime: time.Now().Add(200 * time.Millisecond),
+		randSource:   rand.New(rand.NewSource(42)),
 	}
 
-	// Устанавливаем время тряски
-	g.shakeTime = 200 * time.Millisecond
-
-	// Вызываем updateEffects (нужно создать snake/food для корректной работы)
-	// В данном тесте проверяем только логику decay времени
-	initialShakeTime := g.shakeTime
-	if initialShakeTime <= 0 {
-		t.Skip("shake time already expired")
-	}
-
-	// После updateEffects время тряски должно уменьшиться или обнулиться
+	// shakeEndTime ещё не наступила — тряска должна продолжаться
 	g.updateEffects()
 
-	if g.shakeTime > initialShakeTime {
-		t.Error("shake time should not increase")
+	if g.shakeEndTime.IsZero() {
+		t.Error("shake should not have ended yet")
+	}
+	if g.shakeOffset[0] == 0 && g.shakeOffset[1] == 0 {
+		t.Error("shake offset should be non-zero during shake")
+	}
+
+	// Симулируем ожидание — устанавливаем shakeEndTime в прошлое
+	g.shakeEndTime = time.Now().Add(-200 * time.Millisecond)
+	g.updateEffects()
+
+	if !g.shakeEndTime.IsZero() {
+		t.Error("shake should have ended after time passed")
+	}
+	if g.shakeOffset[0] != 0 || g.shakeOffset[1] != 0 {
+		t.Error("shake offset should be zeroed after shake ends")
 	}
 }
 
-// TestUpdateEffects_Pulse проверяет обновление фазы пульсации
+// TestUpdateEffects_Pulse проверяет эффект пульсации еды
 func TestUpdateEffects_Pulse(t *testing.T) {
+	// Устанавливаем pulseStartTime в прошлое, чтобы фаза уже была прогрессировала
 	g := &Game{
-		moveTimer:  time.Now().Add(-100 * time.Millisecond),
-		pulsePhase: 0,
-		randSource: rand.New(rand.NewSource(42)),
+		pulsePhase:     0.5,
+		pulseStartTime: time.Now().Add(-1 * time.Second), // 1 секунда назад
 	}
-
-	// Устанавливаем фазу пульсации
-	g.pulsePhase = 1.0
 
 	initialPhase := g.pulsePhase
 	g.updateEffects()
 
 	if g.pulsePhase <= initialPhase {
-		t.Error("pulse phase should increase")
+		t.Errorf("pulse phase should increase over time: initial=%f, after=%f", initialPhase, g.pulsePhase)
+	}
+}
+
+// TestHighScoreFilePath проверяет, что путь highscore содержит snake-game в пути
+func TestHighScoreFilePath(t *testing.T) {
+	path := highScoreFilePath()
+
+	if !strings.Contains(path, "snake-game") {
+		t.Errorf("expected highscore path to contain 'snake-game', got: %s", path)
 	}
 
-	if g.pulsePhase > math.Pi*2 {
-		t.Error("pulse phase should wrap around after 2*pi")
+	if !strings.HasSuffix(path, filepath.Join("snake-game", "highscore.txt")) &&
+		!strings.HasSuffix(path, "snake-game\\highscore.txt") {
+		t.Errorf("expected highscore path to end with 'snake-game/highscore.txt', got: %s", path)
 	}
+}
+
+// TestEnsureHighScoreDir проверяет создание директории для highscore файла
+func TestEnsureHighScoreDir(t *testing.T) {
+	// Создаём временную директорию для теста
+	tmpDir := t.TempDir()
+	testPath := filepath.Join(tmpDir, "subdir", "highscore.txt")
+
+	ensureHighScoreDir(testPath)
+
+	expectedDir := filepath.Join(tmpDir, "subdir")
+	if _, err := os.Stat(expectedDir); os.IsNotExist(err) {
+		t.Errorf("expected directory %s to be created", expectedDir)
+	}
+
+	// Проверяем что файл можно создать в этой директории
+	f, err := os.Create(testPath)
+	if err != nil {
+		t.Errorf("failed to create file in ensured directory: %v", err)
+	}
+	f.Close()
 }

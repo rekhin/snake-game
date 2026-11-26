@@ -45,8 +45,9 @@ type Game struct {
 	// Эффекты
 	gridCache   *ebiten.Image // Кэшированное игровое поле (фон + сетка)
 	shakeOffset [2]float32    // Смещение тряски экрана
-	shakeTime   time.Duration // Оставшееся время тряски
-	pulsePhase  float64       // Фаза пульсации еды
+	shakeEndTime  time.Time     // Абсолютное время окончания тряски
+	pulsePhase    float64       // Фаза пульсации еды
+	pulseStartTime time.Time    // Время начала пульсации
 	randSource  *rand.Rand    // Локальный источник случайных чисел для эффектов
 }
 
@@ -111,8 +112,9 @@ func (g *Game) resetGame() {
 
 	// Сброс эффектов
 	g.shakeOffset = [2]float32{0, 0}
-	g.shakeTime = 0
+	g.shakeEndTime = time.Time{}
 	g.pulsePhase = 0
+	g.pulseStartTime = time.Time{}
 
 	// Пересоздаём кэш сетки
 	g.cacheGrid()
@@ -203,7 +205,7 @@ func (g *Game) moveSnake() {
 	if g.snake.CheckWallCollision() || g.snake.CheckSelfCollision() {
 		g.state = StateGameOver
 		// Тряска экрана при проигрыше
-		g.shakeTime = 300 * time.Millisecond
+		g.shakeEndTime = time.Now().Add(300 * time.Millisecond)
 		if g.score > g.highScore {
 			g.highScore = g.score
 			g.saveHighScore()
@@ -218,6 +220,7 @@ func (g *Game) moveSnake() {
 		g.food.Spawn(g.snake.Body)
 		// Пульсация при поедании еды
 		g.pulsePhase = 0
+		g.pulseStartTime = time.Now()
 	}
 }
 
@@ -239,22 +242,20 @@ func (g *Game) updateGameOver() {
 func (g *Game) updateEffects() {
 	now := time.Now()
 
-	// Обновляем тряску экрана
-	if g.shakeTime > 0 {
-		g.shakeTime -= now.Sub(g.moveTimer) // approximate decay
-		if g.shakeTime <= 0 {
-			g.shakeTime = 0
-			g.shakeOffset = [2]float32{0, 0}
-		} else {
-			// Случайное смещение для тряски
-			g.shakeOffset[0] = (g.randSource.Float32() - 0.5) * 6
-			g.shakeOffset[1] = (g.randSource.Float32() - 0.5) * 6
-		}
+	// Обновляем тряску экрана по абсолютному времени окончания
+	if !g.shakeEndTime.IsZero() && now.After(g.shakeEndTime) {
+		g.shakeEndTime = time.Time{}
+		g.shakeOffset = [2]float32{0, 0}
+	} else if !g.shakeEndTime.IsZero() {
+		// Случайное смещение для тряски
+		g.shakeOffset[0] = (g.randSource.Float32() - 0.5) * 6
+		g.shakeOffset[1] = (g.randSource.Float32() - 0.5) * 6
 	}
 
-	// Обновляем фазу пульсации еды
+	// Обновляем фазу пульсации еды с time.Since для корректного decay
 	if g.pulsePhase > 0 {
-		g.pulsePhase += 0.15
+		elapsed := now.Sub(g.pulseStartTime)
+		g.pulsePhase = elapsed.Seconds() * 3 // ~2 секунды на полный цикл
 		if g.pulsePhase > math.Pi*2 {
 			g.pulsePhase = 0
 		}
@@ -311,7 +312,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 
 	// Рисуем кэшированный фон с эффектом тряски
 	op := &ebiten.DrawImageOptions{}
-	if g.shakeTime > 0 {
+	if !g.shakeEndTime.IsZero() {
 		op.GeoM.Translate(float64(g.shakeOffset[0]), float64(g.shakeOffset[1]))
 	}
 	screen.DrawImage(g.gridCache, op)
