@@ -409,6 +409,10 @@ func (g *Game) drawOverlay(screen *ebiten.Image, overlayText string) {
 
 // drawHUD отрисовывает интерфейс пользователя
 func (g *Game) drawHUD(screen *ebiten.Image) {
+	if g.snake == nil {
+		return
+	}
+
 	w, _ := screen.Bounds().Dx(), screen.Bounds().Dy()
 	hudHeight := CellSize + 4
 
