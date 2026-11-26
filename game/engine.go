@@ -18,14 +18,15 @@ import (
 
 // Game представляет основную игровую структуру
 type Game struct {
-	state     State
-	snake     *entity.Snake
-	food      *entity.Food
-	score     int
-	highScore int
-	moveTimer time.Time
-	fontFace  text.Face
+	state      State
+	snake      *entity.Snake
+	food       *entity.Food
+	score      int
+	highScore  int
+	moveTimer  time.Time
+	fontFace   text.Face
 	inputQueue []entity.Direction
+	board      Board // Игровое поле с координатами и размерами
 
 	// Эффекты
 	gridCache      *ebiten.Image // Кэшированное игровое поле (фон + сетка)
@@ -33,7 +34,7 @@ type Game struct {
 	shakeEndTime   time.Time     // Абсолютное время окончания тряски
 	pulsePhase     float64       // Фаза пульсации еды
 	pulseStartTime time.Time     // Время начала пульсации
-randSource    *rand.Rand    // Локальный источник случайных чисел для эффектов
+	randSource     *rand.Rand    // Локальный источник случайных чисел для эффектов
 }
 
 // NewGame создаёт новую игру с заданным шрифтом (TTF байты)
@@ -47,6 +48,7 @@ func NewGame(fontData []byte) *Game {
 		state:     StateMenu,
 		highScore: loadHighScore(),
 		fontFace:  &text.GoTextFace{Source: faceSource, Size: 16},
+		board:     NewBoard(),
 		randSource: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
@@ -197,12 +199,13 @@ func (g *Game) resetGame() {
 
 // cacheGrid создаёт кэшированное изображение статического фона (сетка + HUD)
 func (g *Game) cacheGrid() {
-	w := GridWidth * CellSize
-	h := GridHeight * CellSize
+	b := g.board
+	w := b.Width * CellSize
+	h := b.Height * CellSize
 	cache := ebiten.NewImage(w, h)
 
-	for x := 0; x < GridWidth; x++ {
-		for y := 0; y < GridHeight; y++ {
+	for x := 0; x < b.Width; x++ {
+		for y := 0; y < b.Height; y++ {
 			var cellColor color.RGBA
 			if (x+y)%2 == 0 {
 				cellColor = colorGridLight
@@ -210,8 +213,7 @@ func (g *Game) cacheGrid() {
 				cellColor = colorGridDark
 			}
 
-			dx := float32(x * CellSize)
-			dy := float32(y * CellSize)
+			dx, dy := float32(x*CellSize), float32(y*CellSize)
 			vector.FillRect(cache, dx, dy, float32(CellSize), float32(CellSize), cellColor, false)
 
 			// Границы клеток

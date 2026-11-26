@@ -3,19 +3,47 @@ package game
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 )
 
-// highScoreFile возвращает путь к файлу сохранения рекорда
+const highScoreFileName = "highscore.txt"
+
+// highScoreFilePath возвращает путь к файлу сохранения рекорда.
+// Использует os.UserConfigDir() для кроссплатформенного хранения:
+//   - Windows: %APPDATA%\snake-game\highscore.txt
+//   - Linux: ~/.config/snake-game/highscore.txt
+//   - macOS: ~/Library/Application Support/snake-game/highscore.txt
+//
+// В случае ошибки получения UserConfigDir fallback на executable dir.
 func highScoreFilePath() string {
-	execPath, err := os.Executable()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		// fallback: текущая директория
-		return "highscore.txt"
+		// fallback: рядом с исполняемым файлом
+		log.Printf("[highscore] не удалось получить UserConfigDir: %v, используем fallback", err)
+		return filepath.Join(filepath.Dir(executablePath()), highScoreFileName)
 	}
-	return filepath.Join(filepath.Dir(execPath), "highscore.txt")
+	return filepath.Join(configDir, "snake-game", highScoreFileName)
+}
+
+// executablePath возвращает путь к исполняемому файлу (с кэшированием).
+var _executablePath string = func() string {
+	p, _ := os.Executable()
+	return p
+}()
+
+func executablePath() string {
+	return _executablePath
+}
+
+// ensureHighScoreDir создаёт директорию для highscore файла, если она не существует.
+func ensureHighScoreDir(path string) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Printf("[highscore] не удалось создать директорию %s: %v", dir, err)
+	}
 }
 
 // loadHighScore загружает сохранённый рекорд из файла
@@ -45,9 +73,12 @@ func (g *Game) saveHighScore() {
 	}
 
 	path := highScoreFilePath()
+	ensureHighScoreDir(path)
+
 	f, err := os.Create(path)
 	if err != nil {
-		return // игнорируем ошибки записи
+		log.Printf("[highscore] не удалось записать файл %s: %v", path, err)
+		return
 	}
 	defer f.Close()
 

@@ -12,18 +12,13 @@ import (
 //go:embed resources/NotoSans-Regular.ttf
 var fontData []byte
 
-const (
-	windowWidth  = game.GridWidth * game.CellSize
-	windowHeight = game.GridHeight*game.CellSize + game.CellSize + 4
-	windowTitle  = "🐍 Змейка"
-)
-
 func main() {
-	ebiten.SetWindowSize(windowWidth, windowHeight)
-	ebiten.SetWindowTitle(windowTitle)
-	ebiten.SetWindowResizable(true)
-
 	g := game.NewGame(fontData)
+
+	windowW, windowH := g.Layout(0, 0)
+	ebiten.SetWindowSize(windowW, windowH)
+	ebiten.SetWindowTitle("🐍 Змейка")
+	ebiten.SetWindowResizable(true)
 
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatalf("%v", err)

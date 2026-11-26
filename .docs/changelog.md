@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### ✅ Завершено
+- #002 — Перенести highscore в `os.UserConfigDir()` (2026-11-26)
+  - `highScoreFilePath()` теперь использует `os.UserConfigDir()` для кроссплатформенного хранения
+  - На Windows: `%APPDATA%\snake-game\highscore.txt`
+  - На Linux: `~/.config/snake-game/highscore.txt`
+  - На macOS: `~/Library/Application Support/snake-game/highscore.txt`
+  - Fallback на директорию исполняемого файла при ошибке получения UserConfigDir
+  - Добавлена функция `ensureHighScoreDir()` с `os.MkdirAll` для создания директории
+  - Добавлено логирование ошибок (log.Printf) вместо silent игнорирования
+  - Добавлены тесты: `TestHighScoreFilePath`, `TestEnsureHighScoreDir`
+  - Все 30 тестов проходят (`go test ./...`)
 - #001 — Заменить `math/rand` на локальный источник (2026-11-26)
   - Создан локальный `randSource *rand.Rand` в `entity/food.go` с инициализацией через `init()`
   - Добавлено поле `randSource` в структуру `Game` в `game/game.go`, инициализируется в `NewGame()`
@@ -14,8 +24,6 @@
   - Все 28 тестов проходят (`go test ./...`)
 
 ### ⬜ Запланировано
-- #001 — Заменить `math/rand` на локальный источник
-- #002 — Перенести highscore в `os.UserConfigDir()`
 - #003 — Удалить мёртвый код `drawCell`
 - #004 — Добавить nil-guard в `drawHUD`
 - #005 — Исправить decay тряски на `time.Since`

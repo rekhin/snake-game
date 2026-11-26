@@ -17,7 +17,6 @@ func TestNewGame_HighScoreLoaded(t *testing.T) {
 	// В реальном тесте мы бы использовали тестовый шрифт или моки
 	// Здесь проверяем только структуру
 	g := &Game{
-		state:     StateMenu,
 		highScore: 100,
 	}
 
@@ -81,6 +80,7 @@ func TestResetGame(t *testing.T) {
 		highScore:  50,
 		snake:      nil,
 		food:       nil,
+		board:      NewBoard(),
 		randSource: rand.New(rand.NewSource(42)),
 	}
 

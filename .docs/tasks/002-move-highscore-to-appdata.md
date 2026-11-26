@@ -1,15 +1,15 @@
 # #002 — Перенести highscore в `os.UserConfigDir()`
 
-- **Статус**: ⬜ Не начато
+- **Статус**: ✅ Завершено (2026-11-26)
 - **Приоритет**: 🔥 Высокий
 - **Автор**: @rekhin
 - **Создана**: 2026-11-26
-- **Завершена**: —
+- **Завершена**: 2026-11-26
 - **Блокирует**: нет
 
 ## Описание
 
-Файл highscore.txt сохраняется рядом с исполняемым файлом (`filepath.Dir(executable)`). На Windows это может быть защищённая директория (Program Files), и запись не получится. Нужно перенести в `os.UserConfigDir()`.
+Файл highscore.txt сохранялся рядом с исполняемым файлом (`filepath.Dir(executable)`). На Windows это может быть защищённая директория (Program Files), и запись не получалась. Перенесено в `os.UserConfigDir()`.
 
 ## Контекст
 
@@ -23,26 +23,26 @@
 
 ## Чек-лист
 
-- [ ] Изучить текущую реализацию `highScoreFilePath()` в highscore.go
-- [ ] Заменить на использование `os.UserConfigDir()` с fallback на executable dir
-- [ ] Использовать кроссплатформенный путь: `{UserConfigDir}/snake-game/highscore.txt`
-- [ ] Создать директорию, если не существует (`os.MkdirAll`)
-- [ ] Добавить логирование ошибки создания директории (но не панику)
-- [ ] Обновить тест в `game_test.go` — проверить путь сохранения
-- [ ] Проверка: `go vet ./...` проходит без ошибок
-- [ ] Проверка: `go test ./...` все тесты зелёные
-- [ ] Обновить документацию (README, комментарии)
-- [ ] Записать в changelog.md
+- [x] Изучить текущую реализацию `highScoreFilePath()` в highscore.go
+- [x] Заменить на использование `os.UserConfigDir()` с fallback на executable dir
+- [x] Использовать кроссплатформенный путь: `{UserConfigDir}/snake-game/highscore.txt`
+- [x] Создать директорию, если не существует (`os.MkdirAll`)
+- [x] Добавить логирование ошибки создания директории (но не панику)
+- [x] Обновить тест в `game_test.go` — проверить путь сохранения
+- [x] Проверка: `go vet ./...` проходит без ошибок
+- [x] Проверка: `go test ./...` все тесты зелёные
+- [x] Обновить документацию (README, комментарии)
+- [x] Записать в changelog.md
 
 ## Критерии приёмки
 
-- [ ] Файл highscore сохраняется в UserConfigDir (не рядом с .exe)
-- [ ] На Windows — `%APPDATA%\snake-game\highscore.txt`
-- [ ] На Linux — `~/.config/snake-game/highscore.txt`
-- [ ] На macOS — `~/Library/Application Support/snake-game/highscore.txt`
-- [ ] Фоллбэк на executable dir при ошибке UserConfigDir
-- [ ] Нет ошибок записи, нет паник
-- [ ] Все тесты проходят
+- [x] Файл highscore сохраняется в UserConfigDir (не рядом с .exe)
+- [x] На Windows — `%APPDATA%\snake-game\highscore.txt`
+- [x] На Linux — `~/.config/snake-game/highscore.txt`
+- [x] На macOS — `~/Library/Application Support/snake-game/highscore.txt`
+- [x] Фоллбэк на executable dir при ошибке UserConfigDir
+- [x] Нет ошибок записи, нет паник
+- [x] Все тесты проходят
 
 ## Заметки
 

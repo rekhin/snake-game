@@ -21,5 +21,6 @@ var (
 
 // Layout возвращает размер игрового экрана
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return GridWidth * CellSize, GridHeight*CellSize + CellSize + 4
+	b := g.board
+	return b.ScreenWidth(), b.Y + b.Height*CellSize + 4
 }

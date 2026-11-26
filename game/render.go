@@ -56,7 +56,11 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	}
 	screen.Fill(colorDarkBg)
 
+	b := g.board
+
+	// Рисуем кэш сетки со смещением позиции поля на экране
 	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(b.X), float64(b.Y))
 	if !g.shakeEndTime.IsZero() {
 		op.GeoM.Translate(float64(g.shakeOffset[0]), float64(g.shakeOffset[1]))
 	}
@@ -66,8 +70,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	var borderColor color.RGBA
 	for i := 1; i < len(g.snake.Body); i++ {
 		pos := g.snake.Body[i]
-		dx := float32(pos.X * CellSize)
-		dy := float32(pos.Y*CellSize + CellSize + 4)
+		dx, dy := b.GridToPixel(pos.X, pos.Y)
 		vector.FillRect(screen, dx, dy, float32(CellSize), float32(CellSize), colorSnakeBody, false)
 
 		borderColor = color.RGBA{255, 255, 255, 20}
@@ -77,8 +80,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		vector.StrokeLine(screen, dx+float32(CellSize)-1, dy, dx+float32(CellSize)-1, dy+float32(CellSize), 1, borderColor, false)
 	}
 
-	headX := float32(head.X * CellSize)
-	headY := float32(head.Y*CellSize + CellSize + 4)
+	headX, headY := b.GridToPixel(head.X, head.Y)
 	vector.FillRect(screen, headX, headY, float32(CellSize), float32(CellSize), colorSnakeHead, false)
 
 	borderColor = color.RGBA{255, 255, 255, 40}
@@ -88,8 +90,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	vector.StrokeLine(screen, headX+float32(CellSize)-1, headY, headX+float32(CellSize)-1, headY+float32(CellSize), 1.5, borderColor, false)
 
 	foodPos := g.food.Position
-	foodCenterX := float32(foodPos.X*CellSize + CellSize/2)
-	foodCenterY := float32(foodPos.Y*CellSize+CellSize/2 + CellSize + 4)
+	foodCenterX, foodCenterY := b.GridToPixelCenter(foodPos.X, foodPos.Y)
 
 	var foodColor = colorFood
 	if g.pulsePhase > 0 {
@@ -148,22 +149,26 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 	}
 
 	w, _ := screen.Bounds().Dx(), screen.Bounds().Dy()
-	hudHeight := CellSize + 4
 
-	vector.FillRect(screen, 0, 0, float32(w), float32(hudHeight), colorHUD, false)
+	vector.FillRect(screen, 0, 0, float32(w), float32(HUDHeight), colorHUD, false)
 
 	const padding = 8
-	const rightPadding = 8
+	const textY = 18
 
 	top := &text.DrawOptions{}
 	top.ColorScale.ScaleWithColor(colorText)
-	text.Draw(screen, fmt.Sprintf("Счёт: %d", g.score), g.getFontFace(18), top)
+
+	scoreText := fmt.Sprintf("Счёт: %d", g.score)
+	scoreFace := g.getFontFace(18)
+	scoreW, _ := text.Measure(scoreText, scoreFace, 0)
+	top.GeoM.Translate(float64(padding), float64(textY))
+	text.Draw(screen, scoreText, scoreFace, top)
 
 	if g.highScore > 0 {
 		top = &text.DrawOptions{}
 		highScoreText := fmt.Sprintf("Рекорд: %d", g.highScore)
 		highScoreFace := g.getFontFace(18)
-		top.GeoM.Translate(float64(padding+90), 16)
+		top.GeoM.Translate(float64(padding)+scoreW+padding, float64(textY))
 		top.ColorScale.ScaleWithColor(colorHighlight)
 		text.Draw(screen, highScoreText, highScoreFace, top)
 	}
@@ -174,7 +179,7 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 	lengthW, _ := text.Measure(lengthText, lengthFace, 0)
 
 	top = &text.DrawOptions{}
-	top.GeoM.Translate(float64(w)-lengthW-rightPadding, 16)
+	top.GeoM.Translate(float64(w)-lengthW-float64(padding), float64(textY))
 	top.ColorScale.ScaleWithColor(colorText)
 	text.Draw(screen, lengthText, lengthFace, top)
 }
