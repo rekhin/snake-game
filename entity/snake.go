@@ -21,7 +21,8 @@ func NewSnake() *Snake {
 	}
 }
 
-// Move двигает змейку на один шаг
+// Move двигает змейку на один шаг в текущем направлении.
+// Если Grow > 0, хвост не удаляется (змейка растёт).
 func (s *Snake) Move() {
 	if len(s.Body) == 0 {
 		return
@@ -60,7 +61,8 @@ func (s *Snake) GrowBy(n int) {
 	s.Grow += n
 }
 
-// SetDirection устанавливает новое направление с проверкой
+// SetDirection устанавливает новое направление с проверкой.
+// Возвращает false, если направление противоположно текущему или равно DirNone.
 func (s *Snake) SetDirection(newDir Direction) bool {
 	if newDir == DirNone || s.Direction.IsOpposite(newDir) {
 		return false // Нельзя двигаться в противоположную сторону

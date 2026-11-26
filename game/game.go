@@ -3,6 +3,8 @@ package game
 import (
 	"bytes"
 	"fmt"
+	"math"
+	"math/rand"
 	"image/color"
 	"strings"
 	"time"
@@ -39,6 +41,13 @@ type Game struct {
 	moveTimer time.Time
 	fontFace  text.Face
 	inputQueue []entity.Direction
+
+	// Эффекты
+	gridCache   *ebiten.Image // Кэшированное игровое поле (фон + сетка)
+	shakeOffset [2]float32    // Смещение тряски экрана
+	shakeTime   time.Duration // Оставшееся время тряски
+	pulsePhase  float64       // Фаза пульсации еды
+	randSource  *rand.Rand    // Локальный источник случайных чисел для эффектов
 }
 
 // NewGame создаёт новую игру с заданным шрифтом (TTF байты)
@@ -49,14 +58,47 @@ func NewGame(fontData []byte) *Game {
 	}
 
 	return &Game{
-		state:    StateMenu,
-		fontFace: &text.GoTextFace{Source: faceSource, Size: 16},
+		state:     StateMenu,
+		highScore: loadHighScore(),
+		fontFace:  &text.GoTextFace{Source: faceSource, Size: 16},
+		randSource: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
 // getFontFace возвращает Face с заданным размером
 func (g *Game) getFontFace(size float64) text.Face {
 	return &text.GoTextFace{Source: g.fontFace.(*text.GoTextFace).Source, Size: size}
+}
+
+// cacheGrid создаёт кэшированное изображение статического фона (сетка + HUD)
+func (g *Game) cacheGrid() {
+	w := GridWidth * CellSize
+	h := GridHeight * CellSize
+	cache := ebiten.NewImage(w, h)
+
+	for x := 0; x < GridWidth; x++ {
+		for y := 0; y < GridHeight; y++ {
+			var cellColor color.RGBA
+			if (x+y)%2 == 0 {
+				cellColor = colorGridLight
+			} else {
+				cellColor = colorGridDark
+			}
+
+			dx := float32(x * CellSize)
+			dy := float32(y * CellSize)
+			vector.FillRect(cache, dx, dy, float32(CellSize), float32(CellSize), cellColor, false)
+
+			// Границы клеток
+			borderColor := color.RGBA{255, 255, 255, 30}
+			vector.StrokeLine(cache, dx, dy, dx+float32(CellSize), dy, 1, borderColor, false)
+			vector.StrokeLine(cache, dx, dy+float32(CellSize)-1, dx+float32(CellSize), dy+float32(CellSize)-1, 1, borderColor, false)
+			vector.StrokeLine(cache, dx, dy, dx, dy+float32(CellSize), 1, borderColor, false)
+			vector.StrokeLine(cache, dx+float32(CellSize)-1, dy, dx+float32(CellSize)-1, dy+float32(CellSize), 1, borderColor, false)
+		}
+	}
+
+	g.gridCache = cache
 }
 
 // resetGame сбрасывает состояние игры к начальному
@@ -66,6 +108,14 @@ func (g *Game) resetGame() {
 	g.score = 0
 	g.moveTimer = time.Now()
 	g.inputQueue = nil
+
+	// Сброс эффектов
+	g.shakeOffset = [2]float32{0, 0}
+	g.shakeTime = 0
+	g.pulsePhase = 0
+
+	// Пересоздаём кэш сетки
+	g.cacheGrid()
 }
 
 // Update выполняет игровой цикл
@@ -110,7 +160,7 @@ func (g *Game) updatePlaying() {
 			g.inputQueue = append(g.inputQueue, entity.DirRight)
 		}
 
-		// Ограничение очереди, чтобы избежать задержек
+		// Ограничение очереди (максимум 2 ввода для отзывчивости без задержек)
 		if len(g.inputQueue) > 2 {
 			g.inputQueue = g.inputQueue[len(g.inputQueue)-2:]
 		}
@@ -122,6 +172,9 @@ func (g *Game) updatePlaying() {
 			g.snake.SetDirection(nextDir)
 		}
 	}
+
+	// Обновляем эффекты
+	g.updateEffects()
 
 	now := time.Now()
 	if now.Sub(g.moveTimer) >= g.getMoveInterval() {
@@ -149,8 +202,11 @@ func (g *Game) moveSnake() {
 
 	if g.snake.CheckWallCollision() || g.snake.CheckSelfCollision() {
 		g.state = StateGameOver
+		// Тряска экрана при проигрыше
+		g.shakeTime = 300 * time.Millisecond
 		if g.score > g.highScore {
 			g.highScore = g.score
+			g.saveHighScore()
 		}
 		return
 	}
@@ -160,6 +216,8 @@ func (g *Game) moveSnake() {
 		g.snake.GrowBy(1)
 		g.score += FoodScore
 		g.food.Spawn(g.snake.Body)
+		// Пульсация при поедании еды
+		g.pulsePhase = 0
 	}
 }
 
@@ -174,6 +232,32 @@ func (g *Game) updatePaused() {
 func (g *Game) updateGameOver() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.state = StateMenu
+	}
+}
+
+// updateEffects обновляет визуальные эффекты (тряска, пульсация)
+func (g *Game) updateEffects() {
+	now := time.Now()
+
+	// Обновляем тряску экрана
+	if g.shakeTime > 0 {
+		g.shakeTime -= now.Sub(g.moveTimer) // approximate decay
+		if g.shakeTime <= 0 {
+			g.shakeTime = 0
+			g.shakeOffset = [2]float32{0, 0}
+		} else {
+			// Случайное смещение для тряски
+			g.shakeOffset[0] = (g.randSource.Float32() - 0.5) * 6
+			g.shakeOffset[1] = (g.randSource.Float32() - 0.5) * 6
+		}
+	}
+
+	// Обновляем фазу пульсации еды
+	if g.pulsePhase > 0 {
+		g.pulsePhase += 0.15
+		if g.pulsePhase > math.Pi*2 {
+			g.pulsePhase = 0
+		}
 	}
 }
 
@@ -217,35 +301,85 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	text.Draw(screen, hintText, hintFace, top)
 }
 
-// drawGame отрисовывает игровое поле
+// drawGame отрисовывает игровое поле с эффектами
 func (g *Game) drawGame(screen *ebiten.Image) {
-	screen.Fill(colorDarkBg)
-
 	if g.snake == nil || g.food == nil {
 		return
 	}
 
-	for x := 0; x < GridWidth; x++ {
-		for y := 0; y < GridHeight; y++ {
-			pos := entity.Point{X: x, Y: y}
-			head := g.snake.GetHead()
+	screen.Fill(colorDarkBg)
 
-			var cellColor color.RGBA
-			switch {
-			case head.Equals(pos):
-				cellColor = colorSnakeHead
-			case g.snake.IsBody(pos):
-				cellColor = colorSnakeBody
-			case pos.Equals(g.food.Position):
-				cellColor = colorFood
-			case (x+y)%2 == 0:
-				cellColor = colorGridLight
-			default:
-				cellColor = colorGridDark
-			}
+	// Рисуем кэшированный фон с эффектом тряски
+	op := &ebiten.DrawImageOptions{}
+	if g.shakeTime > 0 {
+		op.GeoM.Translate(float64(g.shakeOffset[0]), float64(g.shakeOffset[1]))
+	}
+	screen.DrawImage(g.gridCache, op)
 
-			drawCell(screen, pos, cellColor)
+	head := g.snake.GetHead()
+
+	// Рисуем тело змейки (без головы — фон уже содержит сетку)
+	for i := 1; i < len(g.snake.Body); i++ {
+		pos := g.snake.Body[i]
+		dx := float32(pos.X*CellSize)
+		dy := float32(pos.Y*CellSize + CellSize + 4)
+		vector.FillRect(screen, dx, dy, float32(CellSize), float32(CellSize), colorSnakeBody, false)
+
+		// Граница сегмента тела
+		borderColor := color.RGBA{255, 255, 255, 20}
+		vector.StrokeLine(screen, dx, dy, dx+float32(CellSize), dy, 1, borderColor, false)
+		vector.StrokeLine(screen, dx, dy+float32(CellSize)-1, dx+float32(CellSize), dy+float32(CellSize)-1, 1, borderColor, false)
+		vector.StrokeLine(screen, dx, dy, dx, dy+float32(CellSize), 1, borderColor, false)
+		vector.StrokeLine(screen, dx+float32(CellSize)-1, dy, dx+float32(CellSize)-1, dy+float32(CellSize), 1, borderColor, false)
+	}
+
+	// Рисуем голову змейки
+	headX := float32(head.X * CellSize)
+	headY := float32(head.Y*CellSize + CellSize + 4)
+	vector.FillRect(screen, headX, headY, float32(CellSize), float32(CellSize), colorSnakeHead, false)
+
+	// Граница головы
+	borderColor := color.RGBA{255, 255, 255, 40}
+	vector.StrokeLine(screen, headX, headY, headX+float32(CellSize), headY, 1.5, borderColor, false)
+	vector.StrokeLine(screen, headX, headY+float32(CellSize)-1, headX+float32(CellSize), headY+float32(CellSize)-1, 1.5, borderColor, false)
+	vector.StrokeLine(screen, headX, headY, headX, headY+float32(CellSize), 1.5, borderColor, false)
+	vector.StrokeLine(screen, headX+float32(CellSize)-1, headY, headX+float32(CellSize)-1, headY+float32(CellSize), 1.5, borderColor, false)
+
+	// Рисуем еду с эффектом пульсации
+	foodPos := g.food.Position
+	foodCenterX := float32(foodPos.X*CellSize + CellSize/2)
+	foodCenterY := float32(foodPos.Y*CellSize+CellSize/2 + CellSize + 4)
+
+	var foodColor = colorFood
+	if g.pulsePhase > 0 {
+		// Пульсация: меняем яркость и размер
+		scale := 1.0 + math.Sin(g.pulsePhase)*0.15
+		radius := float32(CellSize/2-2) * float32(scale)
+
+		// Свечение вокруг еды
+		glowColor := color.RGBA{235, 87, 87, 80}
+		vector.DrawFilledCircle(screen, foodCenterX, foodCenterY, radius+4, glowColor, false)
+
+		// Основная еда
+		foodColor = color.RGBA{
+			uint8(235 * (0.8 + math.Sin(g.pulsePhase)*0.2)),
+			uint8(87 * (0.8 + math.Sin(g.pulsePhase)*0.2)),
+			uint8(87 * (0.8 + math.Sin(g.pulsePhase)*0.2)),
+			255,
 		}
+		vector.DrawFilledCircle(screen, foodCenterX, foodCenterY, radius, foodColor, false)
+
+		// Блик на еде
+		highlight := color.RGBA{255, 180, 180, 120}
+		vector.DrawFilledCircle(screen, foodCenterX-2, foodCenterY-2, radius*0.3, highlight, false)
+	} else {
+		// Стандартная еда — круглая форма
+		radius := float32(CellSize/2 - 2)
+		vector.DrawFilledCircle(screen, foodCenterX, foodCenterY, radius, colorFood, false)
+
+		// Блик на еде
+		highlight := color.RGBA{255, 180, 180, 120}
+		vector.DrawFilledCircle(screen, foodCenterX-2, foodCenterY-2, radius*0.3, highlight, false)
 	}
 
 	g.drawHUD(screen)
@@ -290,9 +424,11 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 
 	if g.highScore > 0 {
 		top = &text.DrawOptions{}
-		top.GeoM.Translate(200, 16)
+		highScoreText := fmt.Sprintf("Рекорд: %d", g.highScore)
+		highScoreFace := g.getFontFace(18)
+		top.GeoM.Translate(float64(padding+90), 16)
 		top.ColorScale.ScaleWithColor(colorHighlight)
-		text.Draw(screen, fmt.Sprintf("Рекорд: %d", g.highScore), g.getFontFace(18), top)
+		text.Draw(screen, highScoreText, highScoreFace, top)
 	}
 
 	length := len(g.snake.Body)
@@ -309,24 +445,4 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 // Layout возвращает размер игрового экрана
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return GridWidth * CellSize, GridHeight*CellSize + CellSize + 4
-}
-
-// drawCell рисует клетку на сетке
-func drawCell(screen *ebiten.Image, pos entity.Point, c color.RGBA) {
-	x := float32(pos.X * CellSize)
-	y := float32(pos.Y*CellSize + CellSize + 4)
-
-	// Оптимизировано: рисуем основное тело клетки одним вызовом
-	vector.FillRect(screen, x, y, float32(CellSize), float32(CellSize), c, false)
-
-	// Рисуем границы клетки
-	borderColor := color.RGBA{255, 255, 255, 30}
-	// Верхняя граница
-	vector.FillRect(screen, x, y, float32(CellSize), 1, borderColor, false)
-	// Нижняя граница
-	vector.FillRect(screen, x, y+float32(CellSize)-1, float32(CellSize), 1, borderColor, false)
-	// Левая граница
-	vector.FillRect(screen, x, y, 1, float32(CellSize), borderColor, false)
-	// Правая граница
-	vector.FillRect(screen, x+float32(CellSize)-1, y, 1, float32(CellSize), borderColor, false)
 }

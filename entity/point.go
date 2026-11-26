@@ -14,7 +14,7 @@ type Point struct {
 	X, Y int
 }
 
-// Equals проверяет равенство двух точек
+// Equals проверяет равенство двух точек на сетке.
 func (p Point) Equals(other Point) bool {
 	return p.X == other.X && p.Y == other.Y
 }
